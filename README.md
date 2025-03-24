@@ -37,7 +37,7 @@ Modern ve gelişmiş bir Türkçe küfür/hakaret tespit API'si. Metin içerisin
 
 1. Repoyu klonlayın:
 ```bash
-git clone https://github.com/turkish-nlp/turkish-profanity-detector.git
+git clone https://github.com/kynuxdev/turkish-profanity-detector.git
 cd turkish-profanity-detector
 ```
 
