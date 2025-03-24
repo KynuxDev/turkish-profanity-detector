@@ -1,0 +1,21 @@
+{
+  "dependencies": {
+    "compression": "^1.7.5",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "crypto": "^1.0.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-mongo-sanitize": "^2.2.0",
+    "express-rate-limit": "^7.5.0",
+    "express-session": "^1.18.1",
+    "express-validator": "^7.2.1",
+    "helmet": "^8.0.0",
+    "hpp": "^0.2.3",
+    "memorystore": "^1.6.7",
+    "mongoose": "^8.9.3",
+    "openai": "^4.77.3",
+    "swagger-ui-express": "^5.0.1",
+    "winston": "^3.17.0"
+  }
+}
