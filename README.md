@@ -1,6 +1,6 @@
 # Turkish Profanity Detection API (Türkçe Küfür Tespit API'si)
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-0.0.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 Modern ve gelişmiş bir Türkçe küfür/hakaret tespit API'si. Metin içerisindeki uygunsuz kelimeleri yüksek doğruluk oranıyla tespit eder, öğrenir ve veritabanına kaydeder. Karakter değişimi yapılmış varyasyonları da tanıyabilir. Yapay zeka entegrasyonu sayesinde, daha önce tespit edilmemiş küfür kelimelerini de öğrenebilir.
@@ -37,7 +37,7 @@ Modern ve gelişmiş bir Türkçe küfür/hakaret tespit API'si. Metin içerisin
 
 1. Repoyu klonlayın:
 ```bash
-git clone https://github.com/turkish-nlp/turkish-profanity-detector.git
+git clone https://github.com/kynuxdev/turkish-profanity-detector.git
 cd turkish-profanity-detector
 ```
 
