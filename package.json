@@ -15,6 +15,7 @@
     "memorystore": "^1.6.7",
     "mongoose": "^8.9.3",
     "openai": "^4.77.3",
+    "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "winston": "^3.17.0"
   }

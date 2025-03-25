@@ -1,0 +1,6 @@
+{"level":"info","message":"Küfür Tespit API sunucusu http://localhost:3000 adresinde çalışıyor","service":"api-server","timestamp":"2025-03-25 05:17:42"}
+{"level":"info","message":"MongoDB bağlantısı başarılı","service":"api-server","timestamp":"2025-03-25 05:17:46"}
+{"level":"info","message":"Küfür Tespit API sunucusu http://localhost:3000 adresinde çalışıyor","service":"api-server","timestamp":"2025-03-25 05:19:11"}
+{"level":"info","message":"MongoDB bağlantısı başarılı","service":"api-server","timestamp":"2025-03-25 05:19:15"}
+{"level":"info","message":"Küfür Tespit API sunucusu http://localhost:3000 adresinde çalışıyor","service":"api-server","timestamp":"2025-03-25 05:20:39"}
+{"level":"info","message":"MongoDB bağlantısı başarılı","service":"api-server","timestamp":"2025-03-25 05:20:43"}

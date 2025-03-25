@@ -67,7 +67,7 @@ class SwearController {
    * @param {Object} req - Express isteği
    * @param {Object} res - Express yanıtı
    */
-  async detectSwear(req, res) {
+  detectSwear = async (req, res) => {
     try {
       const { text } = req.query;
       
@@ -134,7 +134,7 @@ class SwearController {
    * @param {string} [model] - Kullanılacak yapay zeka modeli (varsayılan: DEFAULT_MODEL)
    * @returns {Promise<Object>} AI analiz sonucu
    */
-  async analyzeWithAI(text, model = DEFAULT_MODEL) {
+  analyzeWithAI = async (text, model = DEFAULT_MODEL) => {
     if (!client) {
       logger.error('AI analizi yapılamıyor: API istemcisi oluşturulamadı');
       return { isSwear: false };
@@ -175,7 +175,7 @@ class SwearController {
           }
         ],
         temperature: 0.1, // Daha tutarlı sonuçlar için düşük sıcaklık
-        max_tokens: 500
+        max_tokens: 2000
       });
       
       const aiResponse = response.choices[0].message.content;
@@ -200,7 +200,7 @@ class SwearController {
    * @param {Object} req - Express isteği
    * @param {Object} res - Express yanıtı
    */
-  async getStatistics(req, res) {
+  getStatistics = async (req, res) => {
     try {
       // En çok tespit edilen küfürler
       const topSwearWords = await SwearWord.find()
