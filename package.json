@@ -13,7 +13,7 @@
     "helmet": "^8.0.0",
     "hpp": "^0.2.3",
     "memorystore": "^1.6.7",
-    "mongoose": "^8.9.3",
+    "mongoose": "^8.9.5",
     "openai": "^4.77.3",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
