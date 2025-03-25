@@ -9,6 +9,7 @@ const express = require('express');
 const router = express.Router();
 const swearController = require('../controllers/swearController');
 const rateLimit = require('express-rate-limit');
+const { requireAdminAuth } = require('../middlewares/authMiddleware');
 
 // Standart API rate limiter (DDoS ve brute force saldırılarını önlemek için)
 const apiLimiter = rateLimit({
@@ -88,7 +89,7 @@ const validateTextParam = (req, res, next) => {
  *         schema:
  *           type: string
  *           enum: [claude-3-haiku, claude-3-sonnet, claude-3-opus, gpt-4o, gpt-4-turbo, gpt-4, gpt-3.5-turbo]
- *           default: claude-3-haiku
+ *           default: o3-mini
  *         description: Kullanılacak AI modeli
  *       - in: query
  *         name: confidence
@@ -180,7 +181,7 @@ router.get('/detect', apiLimiter, validateTextParam, swearController.detectSwear
  *       500:
  *         description: Sunucu hatası
  */
-router.get('/stats', apiLimiter, swearController.getStatistics);
+router.get('/stats', apiLimiter, requireAdminAuth, swearController.getStatistics);
 
 /**
  * @swagger
@@ -231,7 +232,7 @@ router.get('/stats', apiLimiter, swearController.getStatistics);
  *       500:
  *         description: Sunucu hatası
  */
-router.post('/word', adminLimiter, swearController.addSwearWord);
+router.post('/word', adminLimiter, requireAdminAuth, swearController.addSwearWord);
 
 /**
  * @swagger
@@ -267,7 +268,7 @@ router.post('/word', adminLimiter, swearController.addSwearWord);
  *       500:
  *         description: Sunucu hatası
  */
-router.delete('/word/:id', adminLimiter, swearController.deleteSwearWord);
+router.delete('/word/:id', adminLimiter, requireAdminAuth, swearController.deleteSwearWord);
 
 /**
  * @swagger
@@ -342,7 +343,7 @@ router.post('/report-false-positive', apiLimiter, swearController.reportFalsePos
  *       500:
  *         description: Sunucu hatası
  */
-router.post('/bulk-import', highVolumeProcessingLimiter, swearController.bulkImport);
+router.post('/bulk-import', highVolumeProcessingLimiter, requireAdminAuth, swearController.bulkImport);
 
 /**
  * @swagger
@@ -372,7 +373,7 @@ router.post('/bulk-import', highVolumeProcessingLimiter, swearController.bulkImp
  *         required: false
  *         schema:
  *           type: string
- *           default: claude-3-haiku
+ *           default: o3-mini
  *         description: Kullanılacak AI modeli
  *     responses:
  *       200:
@@ -384,6 +385,204 @@ router.post('/bulk-import', highVolumeProcessingLimiter, swearController.bulkImp
  *       500:
  *         description: Sunucu hatası
  */
-router.post('/enrich-variations', highVolumeProcessingLimiter, swearController.enrichVariationsWithAI);
+router.post('/enrich-variations', highVolumeProcessingLimiter, requireAdminAuth, swearController.enrichVariationsWithAI);
+
+/**
+ * @swagger
+ * /api/swear/variations/{word}:
+ *   get:
+ *     summary: Bir kelime için varyasyonları getirir
+ *     description: Belirli bir kelime için tüm varyasyonları getirir
+ *     tags:
+ *       - Varyasyon Yönetimi
+ *     parameters:
+ *       - in: path
+ *         name: word
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Varyasyonları getirilecek kelime
+ *     responses:
+ *       200:
+ *         description: Varyasyonlar başarıyla getirildi
+ *       400:
+ *         description: Geçersiz istek
+ *       404:
+ *         description: Kelime için varyasyon bulunamadı
+ *       429:
+ *         description: Çok fazla istek
+ *       500:
+ *         description: Sunucu hatası
+ */
+router.get('/variations/:word', apiLimiter, swearController.getVariationsForWord);
+
+/**
+ * @swagger
+ * /api/swear/variations/{word}/enrich:
+ *   post:
+ *     summary: Bir kelime için varyasyonları zenginleştirir
+ *     description: Belirli bir kelime için varyasyonları algoritma ve yapay zeka kullanarak zenginleştirir
+ *     tags:
+ *       - Varyasyon Yönetimi
+ *     parameters:
+ *       - in: path
+ *         name: word
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Varyasyonları zenginleştirilecek kelime
+ *       - in: query
+ *         name: useAI
+ *         required: false
+ *         schema:
+ *           type: boolean
+ *           default: true
+ *         description: Yapay zeka kullanılsın mı?
+ *       - in: query
+ *         name: model
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Kullanılacak AI modeli
+ *     responses:
+ *       200:
+ *         description: Varyasyon zenginleştirme başarıyla tamamlandı
+ *       400:
+ *         description: Geçersiz istek
+ *       404:
+ *         description: Kelime bulunamadı
+ *       429:
+ *         description: Çok fazla istek
+ *       500:
+ *         description: Sunucu hatası
+ */
+router.post('/variations/:word/enrich', highVolumeProcessingLimiter, requireAdminAuth, swearController.enrichVariationsForWord);
+
+/**
+ * @swagger
+ * /api/swear/variations/stats:
+ *   get:
+ *     summary: Varyasyon istatistiklerini getirir
+ *     description: Veritabanındaki küfür kelimelerinin varyasyon istatistiklerini getirir
+ *     tags:
+ *       - Varyasyon Yönetimi
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Maksimum sonuç sayısı
+ *     responses:
+ *       200:
+ *         description: İstatistikler başarıyla getirildi
+ *       429:
+ *         description: Çok fazla istek
+ *       500:
+ *         description: Sunucu hatası
+ */
+router.get('/variations/stats', apiLimiter, requireAdminAuth, swearController.getVariationStatistics);
+
+/**
+ * @swagger
+ * /api/swear/variations/generate:
+ *   get:
+ *     summary: Kelime için varyasyon önerileri oluşturur
+ *     description: Verilen kelime için varyasyon önerileri oluşturur (veritabanına kaydetmeden)
+ *     tags:
+ *       - Varyasyon Yönetimi
+ *     parameters:
+ *       - in: query
+ *         name: word
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Varyasyonları oluşturulacak kelime
+ *       - in: query
+ *         name: useAI
+ *         required: false
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Yapay zeka kullanılsın mı?
+ *       - in: query
+ *         name: model
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Kullanılacak AI modeli
+ *     responses:
+ *       200:
+ *         description: Varyasyonlar başarıyla oluşturuldu
+ *       400:
+ *         description: Geçersiz istek
+ *       429:
+ *         description: Çok fazla istek
+ *       500:
+ *         description: Sunucu hatası
+ */
+router.get('/variations/generate', apiLimiter, swearController.generateVariations);
+
+/**
+ * @swagger
+ * /api/swear/variations/bulk-enrich:
+ *   post:
+ *     summary: Toplu varyasyon zenginleştirme
+ *     description: Veritabanındaki çok sayıda küfür kelimesi için varyasyon zenginleştirme işlemi çalıştırır
+ *     tags:
+ *       - Varyasyon Yönetimi
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 100
+ *         description: İşlenecek maksimum kelime sayısı
+ *     responses:
+ *       200:
+ *         description: Toplu zenginleştirme başarıyla tamamlandı
+ *       429:
+ *         description: Çok fazla istek
+ *       500:
+ *         description: Sunucu hatası
+ */
+router.post('/variations/bulk-enrich', highVolumeProcessingLimiter, requireAdminAuth, swearController.runBulkVariationEnrichment);
+
+/**
+ * AI Modelleri Endpointi
+ * Desteklenen tüm yapay zeka modellerini listeler
+ */
+router.get('/models', (req, res) => {
+  // Desteklenen modellerin listesi
+  const supportedModels = [
+    "gpt-4.5",
+    "o3-mini",
+    "claude-3-7-sonnet",
+    "claude-3-5-sonnet", 
+    "chatgpt-latest",
+    "gpt-4o",
+    "gpt-4",
+    "gpt-4-turbo",
+    "claude-v3-opus",
+    "claude-3-haiku",
+    "gemini-2.0-pro",
+    "gemini-2.0-flash",
+    "command-r-plus",
+    "command-r"
+  ];
+
+  // OpenAI benzeri yanıt formatı
+  const response = {
+    object: "list",
+    data: supportedModels.map(model => ({
+      id: model,
+      object: "model",
+    }))
+  };
+
+  res.status(200).json(response);
+});
 
 module.exports = router;

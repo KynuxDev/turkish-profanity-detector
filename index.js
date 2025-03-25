@@ -12,7 +12,7 @@ const mongoSanitize = require('express-mongo-sanitize');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const hpp = require('hpp');
-const { swaggerUI, swaggerDocs } = require('./swagger');
+const { swaggerUI, swaggerDocs, swaggerUIOptions } = require('./swagger');
 const swearRoutes = require('./routes/swearRoutes');
 
 // Logger ayarlarını yükle
@@ -24,6 +24,10 @@ const logger = createServiceLogger('api-server');
 // Express uygulaması oluştur
 const app = express();
 const port = process.env.PORT || 3000;
+
+// Proxy güvenliği için gerekli ayar - X-Forwarded-For başlıklarını güvenilir kabul et
+// Bu ayar express-rate-limit'in kullanıcıları doğru tanımlaması için gereklidir
+app.set('trust proxy', 1); // 1 = trust first proxy
 
 // Log dizinini oluştur
 createLogDir();
@@ -65,8 +69,8 @@ const limiter = rateLimit({
 });
 app.use('/api', limiter);
 
-// Swagger dokümantasyonu
-app.use('/api-docs', swaggerUI.serve, swaggerUI.setup(swaggerDocs));
+// Swagger dokümantasyonu - modern UI ile
+app.use('/api-docs', swaggerUI.serve, swaggerUI.setup(swaggerDocs, swaggerUIOptions));
 
 // API rotaları
 app.use('/api/swear', swearRoutes);

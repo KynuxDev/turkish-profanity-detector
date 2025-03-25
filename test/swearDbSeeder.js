@@ -218,7 +218,7 @@ async function enrichVariationsWithAI() {
         console.log(`${colors.dim}AI'ye sorgu gönderiliyor...${colors.reset}`);
         
         const response = await client.chat.completions.create({
-          model: 'claude-3-haiku',
+          model: 'o3-mini',
           messages: [
             {
               role: 'system',

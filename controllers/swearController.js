@@ -9,6 +9,7 @@
  */
 
 const swearDetectionService = require('../services/swearDetectionService');
+const varyasyonService = require('../services/varyasyonService');
 const SwearWord = require('../models/swearWord');
 const OpenAI = require('openai');
 const fs = require('fs').promises;
@@ -56,7 +57,11 @@ try {
 // Desteklenen modeller ve varsayılan model
 const SUPPORTED_MODELS = [
   'claude-3-haiku',
-  'claude-3-sonnet',
+  'o3-mini',
+  'claude-3-7-sonnet',
+  'gpt-4.5',
+  'gemini-2.0-pro',
+  'chatgpt-latest',
   'claude-3-opus',
   'gpt-4o', 
   'gpt-4-turbo',
@@ -64,8 +69,8 @@ const SUPPORTED_MODELS = [
   'gpt-3.5-turbo'
 ];
 
-// Varsayılan model (hız ve doğruluk dengesine göre)
-const DEFAULT_MODEL = 'claude-3-haiku';
+// Varsayılan model (en yüksek doğruluk için)
+const DEFAULT_MODEL = 'gpt-4.5';
 
 // Analiz sonuçları önbelleği
 const analysisCache = new Map();
@@ -966,6 +971,324 @@ class SwearController {
       return res.status(500).json({
         success: false,
         message: 'Varyasyon zenginleştirme sırasında bir hata oluştu',
+        error: error.message
+      });
+    }
+  }
+  
+  /**
+   * Belirli bir kelime için varyasyonları zenginleştirir
+   * @param {Object} req - Express isteği
+   * @param {Object} res - Express yanıtı
+   */
+  enrichVariationsForWord = async (req, res) => {
+    try {
+      const { word } = req.params;
+      const { useAI = true, model } = req.query;
+      
+      if (!word) {
+        return res.status(400).json({
+          success: false,
+          message: 'Varyasyonları zenginleştirilecek kelime parametresi gerekli'
+        });
+      }
+      
+      // Kelimeyi veritabanında bul
+      const swearWord = await SwearWord.findByWord(word);
+      
+      if (!swearWord) {
+        return res.status(404).json({
+          success: false,
+          message: 'Belirtilen kelime veritabanında bulunamadı'
+        });
+      }
+      
+      // Varyasyonları zenginleştir
+      logger.info(`"${word}" kelimesi için varyasyon zenginleştirme başlatılıyor`);
+      
+      const result = await varyasyonService.enrichVariations(word, {
+        useAI: useAI === 'true' || useAI === true,
+        model: model
+      });
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Varyasyon zenginleştirme başarıyla tamamlandı',
+        result: {
+          baseWord: result.baseWord,
+          variationsCount: result.variations.length,
+          newVariationsAdded: result.added,
+          variations: result.variations
+        }
+      });
+    } catch (error) {
+      logger.error('Varyasyon zenginleştirme hatası:', { error: error.message, stack: error.stack });
+      return res.status(500).json({
+        success: false,
+        message: 'Varyasyon zenginleştirme sırasında bir hata oluştu',
+        error: error.message
+      });
+    }
+  }
+  
+  /**
+   * Belirli bir kelime için tüm varyasyonları getirir
+   * @param {Object} req - Express isteği
+   * @param {Object} res - Express yanıtı
+   */
+  getVariationsForWord = async (req, res) => {
+    try {
+      const { word } = req.params;
+      
+      if (!word) {
+        return res.status(400).json({
+          success: false,
+          message: 'Varyasyonları getirilecek kelime parametresi gerekli'
+        });
+      }
+      
+      // Kelimeyi ve varyasyonlarını getir
+      const variations = await varyasyonService.getAllVariationsFromDB(word);
+      
+      if (!variations.length) {
+        return res.status(404).json({
+          success: false,
+          message: 'Belirtilen kelime için varyasyon bulunamadı'
+        });
+      }
+      
+      // Veri yapısını düzenle
+      const baseWord = variations[0]; // İlk kelime ana kelimedir
+      const variationList = variations.slice(1); // Geri kalanlar varyasyonlardır
+      
+      return res.status(200).json({
+        success: true,
+        data: {
+          baseWord,
+          variations: variationList,
+          count: variationList.length
+        }
+      });
+    } catch (error) {
+      logger.error('Varyasyon getirme hatası:', { error: error.message, stack: error.stack });
+      return res.status(500).json({
+        success: false,
+        message: 'Varyasyonlar getirilirken bir hata oluştu',
+        error: error.message
+      });
+    }
+  }
+  
+  /**
+   * Varyasyon istatistiklerini getirir
+   * @param {Object} req - Express isteği
+   * @param {Object} res - Express yanıtı
+   */
+  getVariationStatistics = async (req, res) => {
+    try {
+      const { limit = 20 } = req.query;
+      
+      // En çok varyasyona sahip kelimeleri getir
+      const topVariedWords = await varyasyonService.getMostVariedWords(parseInt(limit));
+      
+      // Genel istatistikleri hesapla
+      const totalWords = await SwearWord.countDocuments({ isActive: true });
+      
+      // Varyasyon sayısı dağılımı (kaç kelimenin X varyasyonu var)
+      const variationDistribution = await SwearWord.aggregate([
+        { $match: { isActive: true } },
+        {
+          $project: {
+            variationCount: { $size: { $ifNull: ['$variations', []] } }
+          }
+        },
+        {
+          $group: {
+            _id: '$variationCount',
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]);
+      
+      // Toplam varyasyon sayısı
+      const totalVariationsResult = await SwearWord.aggregate([
+        { $match: { isActive: true } },
+        {
+          $project: {
+            variationCount: { $size: { $ifNull: ['$variations', []] } }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$variationCount' }
+          }
+        }
+      ]);
+      
+      const totalVariations = totalVariationsResult.length > 0 ? totalVariationsResult[0].total : 0;
+      
+      return res.status(200).json({
+        success: true,
+        statistics: {
+          totalWords,
+          totalVariations,
+          averageVariationsPerWord: totalWords > 0 ? (totalVariations / totalWords).toFixed(2) : 0,
+          topVariedWords,
+          variationDistribution: variationDistribution.reduce((acc, curr) => {
+            acc[curr._id] = curr.count;
+            return acc;
+          }, {})
+        }
+      });
+    } catch (error) {
+      logger.error('Varyasyon istatistikleri hatası:', { error: error.message, stack: error.stack });
+      return res.status(500).json({
+        success: false,
+        message: 'Varyasyon istatistikleri alınırken bir hata oluştu',
+        error: error.message
+      });
+    }
+  }
+  
+  /**
+   * Verilen kelime için süper zenginleştirilmiş sınırsız varyasyon önerileri oluşturur (veritabanına kaydetmeden)
+   * @param {Object} req - Express isteği
+   * @param {Object} res - Express yanıtı
+   */
+  generateVariations = async (req, res) => {
+    try {
+      const { word } = req.query;
+      const { 
+        useAI = true, // Varsayılan olarak yapay zeka kullanılsın (en kapsamlı sonuçlar için)
+        model,
+        limit, // Opsiyonel: API yanıtında döndürülecek maksimum varyasyon sayısı
+        categories = 'all' // all veya comma-separated lista: algorithmic,ai,phonetic,spacing,replacement
+      } = req.query;
+      
+      if (!word) {
+        return res.status(400).json({
+          success: false,
+          message: 'Varyasyonları oluşturulacak kelime parametresi gerekli'
+        });
+      }
+      
+      logger.info(`"${word}" kelimesi için sınırsız varyasyon oluşturma isteği. AI: ${useAI}, Model: ${model || 'varsayılan'}`);
+      
+      // Kategori filtresini ayarla
+      const categoryFilter = categories === 'all' ? null : categories.split(',');
+      
+      // Algoritmik varyasyonları oluştur (hiçbir sınırlama olmadan)
+      const algorithmicVariations = varyasyonService.generateAlgorithmicVariations(word);
+      
+      let aiVariations = [];
+      
+      // Eğer AI kullanılacaksa, sınırsız AI varyasyonları oluştur
+      if (useAI === 'true' || useAI === true) {
+        aiVariations = await varyasyonService.generateAIVariations(word, model);
+      }
+      
+      // Tüm benzersiz varyasyonları birleştir
+      let allVariations = [...new Set([
+        ...algorithmicVariations.filter(v => v !== word),
+        ...aiVariations
+      ])];
+      
+      // Kategori filtreleme varsa uygula
+      if (categoryFilter) {
+        // Farklı kategorilere göre varyasyon türleri
+        const categories = {
+          algorithmic: algorithmicVariations, 
+          ai: aiVariations,
+          replacement: algorithmicVariations.filter(v => v.length === word.length), // Karakter değişimi
+          spacing: algorithmicVariations.filter(v => v.includes(' ') || v.includes('.') || v.includes('-')), // Boşluk/noktalama
+          phonetic: algorithmicVariations.filter(v => {
+            // Fonetik benzerlik - Türkçe sesli harf değişimi
+            const vowels = 'aeıioöuü';
+            let phoneticDifference = false;
+            
+            for (let i = 0; i < Math.min(v.length, word.length); i++) {
+              if (vowels.includes(v[i]) && vowels.includes(word[i]) && v[i] !== word[i]) {
+                phoneticDifference = true;
+                break;
+              }
+            }
+            
+            return phoneticDifference;
+          })
+        };
+        
+        // Sadece seçilen kategorileri dahil et
+        const filteredVariations = categoryFilter.flatMap(cat => categories[cat] || []);
+        allVariations = [...new Set(filteredVariations)];
+      }
+      
+      // İstenirse varyasyon sayısını sınırla
+      if (limit && !isNaN(parseInt(limit)) && parseInt(limit) > 0) {
+        allVariations = allVariations.slice(0, parseInt(limit));
+      }
+      
+      // Varyasyonları gruplayabilmek için kategorize et
+      const categorizedVariations = {
+        characterReplacement: allVariations.filter(v => v.length === word.length && !v.includes(' ') && !v.includes('.')), // Karakter değişimi
+        spacing: allVariations.filter(v => v.includes(' ') || v.includes('.') || v.includes('-')), // Boşluk/noktalama
+        lengthChange: allVariations.filter(v => v.length !== word.length && !v.includes(' ') && !v.includes('.')) // Uzunluk değişimi
+      };
+      
+      return res.status(200).json({
+        success: true,
+        data: {
+          originalWord: word,
+          stats: {
+            algorithmicVariationsCount: algorithmicVariations.length - 1, // Ana kelimeyi çıkar
+            aiVariationsCount: aiVariations.length,
+            totalUniqueVariations: allVariations.length,
+            categoryCounts: {
+              characterReplacement: categorizedVariations.characterReplacement.length,
+              spacing: categorizedVariations.spacing.length,
+              lengthChange: categorizedVariations.lengthChange.length
+            }
+          },
+          variations: allVariations,
+          // İsteğe bağlı olarak kategorize edilmiş varyasyonları da döndür
+          categorizedVariations
+        }
+      });
+    } catch (error) {
+      logger.error('Varyasyon oluşturma hatası:', { error: error.message, stack: error.stack });
+      return res.status(500).json({
+        success: false,
+        message: 'Varyasyonlar oluşturulurken bir hata oluştu',
+        error: error.message
+      });
+    }
+  }
+  
+  /**
+   * Toplu olarak varyasyon zenginleştirme işlemi çalıştırır
+   * @param {Object} req - Express isteği
+   * @param {Object} res - Express yanıtı
+   */
+  runBulkVariationEnrichment = async (req, res) => {
+    try {
+      const { limit = 100 } = req.query;
+      
+      logger.info(`Toplu varyasyon zenginleştirme başlatılıyor. Limit: ${limit}`);
+      
+      // Varyasyon servisindeki toplu zenginleştirme fonksiyonunu çağır
+      const result = await varyasyonService.runBulkEnrichment(parseInt(limit));
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Toplu varyasyon zenginleştirme tamamlandı',
+        results: result
+      });
+    } catch (error) {
+      logger.error('Toplu varyasyon zenginleştirme hatası:', { error: error.message, stack: error.stack });
+      return res.status(500).json({
+        success: false,
+        message: 'Toplu varyasyon zenginleştirme sırasında bir hata oluştu',
         error: error.message
       });
     }

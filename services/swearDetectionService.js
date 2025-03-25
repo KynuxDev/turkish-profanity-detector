@@ -1,15 +1,17 @@
 /**
- * Küfür Tespit Servisi
+ * Küfür Tespit Servisi - Ultra Sınırsız Varyasyon Algılama
  * 
  * Verilen metni analiz ederek küfür içerip içermediğini belirler,
  * metin içindeki olası küfürleri tespit eder ve veritabanında yönetir.
- * Gelişmiş varyasyon algoritmaları ve optimizasyonlar içerir.
+ * Gelişmiş varyasyon algoritmaları, yapay zeka entegrasyonu ve sınırsız varyasyon desteği içerir.
  * 
  * @module services/swearDetectionService
  */
 
 const SwearWord = require('../models/swearWord');
+const varyasyonService = require('./varyasyonService');
 const { createLogger, format, transports } = require('winston');
+const path = require('path');
 
 // Winston logger yapılandırması
 const logger = createLogger({
@@ -117,8 +119,8 @@ class SwearDetectionService {
   }
   
   /**
-   * Kelimeyi benzer yazılışları değerlendirerek kontrol eder
-   * Önbellek kullanarak performansı artırır
+   * Kelimeyi benzer yazılışları değerlendirerek kontrol eder - Ultra Genişletilmiş Sürüm
+   * Önbellek ve veritabanı optimizasyonları ile varyasyon servisi entegrasyonu
    * 
    * @param {string} word - Kontrol edilecek kelime
    * @returns {Promise<{isSwear: boolean, swearWord: Object}>} Tespit sonucu
@@ -139,7 +141,7 @@ class SwearDetectionService {
           await SwearWord.updateOne(
             { _id: cached.result.swearWord._id },
             { 
-              $inc: { detectionCount: 1 },
+              $inc: { 'stats.detectionCount': 1 },
               $set: { lastDetectedAt: new Date() }
             }
           );
@@ -152,16 +154,17 @@ class SwearDetectionService {
     }
     
     try {
-      // Temel kontrol
+      // Adım 1: Direkt Veritabanı Kontrolü
+      // Bu en hızlı eşleşme yoludur, direkt kelimeyi veya bilinen bir varyasyonu bulur
       let swearWord = await SwearWord.findByWord(word);
       
       // Eğer direkt eşleşme bulunduysa
       if (swearWord) {
         logger.debug(`Küfür tespit edildi: "${word}"`);
         
-        // Tespit sayısını artır
+        // Tespit sayısını ve tarihini güncelle
         await swearWord.updateOne({
-          $inc: { detectionCount: 1 },
+          $inc: { 'stats.detectionCount': 1 },
           $set: { lastDetectedAt: new Date() }
         });
         
@@ -173,19 +176,62 @@ class SwearDetectionService {
         return result;
       }
       
-      // Temel sansürleme teknikleri kontrolü (örn: a -> @, o -> 0)
-      logger.debug(`Varyasyonlar oluşturuluyor: "${word}"`);
+      // Adım 2: Temel Varyasyon Kontrolü
+      // Önceden oluşturulmuş ve veritabanında saklanmış tüm varyasyonları kontrol et
+      // Bu adımda VaryasyonService'i kullanarak veritabanındaki tüm kelimeler ve onların varyasyonlarını kontrol ediyoruz
+      // Bu nedenle önce veritabanından tüm olası varyasyonları alıyoruz (sadece o kelime için değil, tüm benzer kelimeler için)
+      const dbVariations = await varyasyonService.getAllVariationsFromDB(word);
+      
+      if (dbVariations.length > 0) {
+        // Bulunan ilk kelimeyi veritabanından getir
+        swearWord = await SwearWord.findByWord(dbVariations[0]);
+        
+        if (swearWord) {
+          logger.debug(`Veritabanı varyasyonu üzerinden küfür tespit edildi: "${word}" -> "${dbVariations[0]}"`);
+          
+          // Yeni varyasyon ekle ve güncelle (kelime varyasyon olarak öğrensin)
+          await swearWord.updateWithVariations([word]);
+          
+          const result = { isSwear: true, swearWord };
+          
+          // Önbelleğe ekle
+          swearWordCache.set(word, { result, timestamp: Date.now() });
+          return result;
+        }
+      }
+      
+      // Adım 3: Algoritmik Varyasyon Kontrolü
+      // İlk iki adımda bulunamadıysa, üretilen olası tüm varyasyonları kontrol et
+      logger.debug(`Algoritmik ve AI varyasyonlar oluşturuluyor: "${word}"`);
       const possibleVariations = this.generatePossibleVariations(word);
       
       for (const variation of possibleVariations) {
         if (variation === word) continue; // Kendisini tekrar kontrol etme
         
+        // MongoDB'de bu varyasyonu ara
         swearWord = await SwearWord.findByWord(variation);
         if (swearWord) {
           logger.debug(`Varyasyon üzerinden küfür tespit edildi: "${word}" -> "${variation}"`);
           
-          // Yeni varyasyon ekle ve güncelle
-          await swearWord.updateWithVariations([word]);
+          // Kelimeyi ve bu varyasyonla ilgili diğer tüm varyasyonları öğren
+          // Bu, veritabanı yükünü artırabilir, bu yüzden arkaplanda yapıyoruz
+          setTimeout(async () => {
+            try {
+              // Yeni tespit edilen kelimeyi ve varyasyonu sakla
+              await swearWord.updateWithVariations([word]);
+              
+              // VaryasyonService ile zenginleştirme yap
+              await varyasyonService.enrichVariations(swearWord.word, {
+                useAI: true, 
+                category: swearWord.category,
+                source: 'varyasyon_eşleşmesi'
+              });
+              
+              logger.info(`Yeni tespit edilen küfür varyasyonu veritabanına eklendi ve zenginleştirildi: "${word}"`);
+            } catch (enrichError) {
+              logger.error(`Varyasyon zenginleştirme hatası: ${enrichError.message}`);
+            }
+          }, 50); // Minimum gecikme ile arkaplanda çalıştır
           
           const result = { isSwear: true, swearWord };
           
@@ -199,7 +245,8 @@ class SwearDetectionService {
         }
       }
       
-      // Küfür değil - sonucu önbelleğe kaydet
+      // Adım 4: Küfür olmadığı tespit edildi
+      // Sonucu önbelleğe kaydet
       const result = { isSwear: false, swearWord: null };
       swearWordCache.set(word, { result, timestamp: Date.now() });
       
@@ -211,11 +258,41 @@ class SwearDetectionService {
   }
   
   /**
-   * Olası karakter değişimleriyle varyasyonlar oluşturur - Gelişmiş algoritma
+   * Olası karakter değişimleriyle varyasyonlar oluşturur - Ultra Genişletilmiş Sürüm (SINIRSIZ)
+   * VaryasyonService entegrasyonu ile tamamen sınırsız varyasyon desteği
+   * 
    * @param {string} word - Varyasyonları oluşturulacak kelime
-   * @returns {Array<string>} Olası varyasyonlar
+   * @returns {Array<string>} Tüm olası varyasyonlar - hiçbir sınırlama olmadan
    */
   generatePossibleVariations(word) {
+    // VaryasyonService'i kullanarak algoritmik varyasyonları oluştur
+    const algorithmicVariations = varyasyonService.generateAlgorithmicVariations(word);
+    
+    // Kendi içsel varyasyon oluşturma yöntemlerimizle zenginleştir
+    const internalVariations = this._generateInternalVariations(word);
+    
+    // Tüm varyasyonları birleştir - HİÇBİR SINIRLAMA OLMADAN
+    const allVariations = new Set([
+      ...algorithmicVariations,
+      ...internalVariations
+    ]);
+    
+    // Orijinal kelimeyi hariç tut ama sıralama veya sayı sınırlaması yapma
+    const finalVariations = [...allVariations].filter(v => v !== word);
+    
+    logger.debug(`"${word}" için ${algorithmicVariations.length} algoritmik ve ${internalVariations.length} dahili, toplam ${finalVariations.length} varyasyon oluşturuldu - SINIRSIZ MOD`);
+    
+    // Tüm varyasyonları döndür - hiçbir sınırlama olmadan
+    return [word, ...finalVariations];
+  }
+
+  /**
+   * İçsel varyasyon üretme algoritmaları (geriye dönük uyumluluk için korundu)
+   * @param {string} word - Varyasyonları oluşturulacak kelime
+   * @returns {Array<string>} Dahili algoritmayla oluşturulan varyasyonlar
+   * @private
+   */
+  _generateInternalVariations(word) {
     // Ana varyasyonlar kümesini oluştur
     const variations = new Set([word]);
     
@@ -254,223 +331,28 @@ class SwearDetectionService {
       'z': ['s', '2']
     };
     
-    // 1. Temel karakter değişimleri (tek karakter)
-    this._applyCharacterReplacements(word, replacements, variations);
-    
-    // 2. Çoklu karakter değişimleri (birden fazla karakter aynı anda)
-    this._applyMultipleReplacements(word, replacements, variations);
-    
-    // 3. Tekrarlanan karakterleri işleme (aaaaa -> a veya aa)
-    this._handleRepeatedCharacters(word, variations);
-    
-    // 4. Boşluk ve noktalama ekleme/çıkarma varyasyonları
-    this._handleSpacingVariations(word, variations);
-    
-    // 5. Tersine çevirme ve benzer kelimeler
-    this._handleReverseAndSimilar(word, variations);
-    
-    // 6. Benzer sesler ve yazımlar
-    this._handlePhoneticVariations(word, variations);
-    
-    return [...variations];
-  }
-  
-  /**
-   * Tek karakter değişimleri uygular
-   * @private
-   */
-  _applyCharacterReplacements(word, replacements, variations) {
-    // Tüm olası tek karakter değişimlerini oluştur
+    // Temel karakter değişimleri
     for (let i = 0; i < word.length; i++) {
       const char = word[i].toLowerCase();
       const possibleReplacements = replacements[char] || [];
       
       for (const replacement of possibleReplacements) {
-        const variation = word.substring(0, i) + replacement + word.substring(i + 1);
-        variations.add(variation);
-        
-        // Büyük harf versiyonlarını da ekle
-        if (replacement.length === 1) {
-          const upperVariation = word.substring(0, i) + replacement.toUpperCase() + word.substring(i + 1);
-          variations.add(upperVariation);
-        }
-      }
-    }
-  }
-  
-  /**
-   * Çoklu karakter değişimleri uygular (kombinasyonları)
-   * @private
-   */
-  _applyMultipleReplacements(word, replacements, variations) {
-    // İlk turda oluşturulan varyasyonlar üzerinde ikinci değişim turu
-    const firstLevelVariations = [...variations];
-    
-    // Her bir ilk seviye varyasyon için ek değişim uygula (daha karmaşık kombinasyonlar)
-    for (const varWord of firstLevelVariations) {
-      if (varWord === word) continue; // Orijinal kelimeyi atla
-      
-      for (let i = 0; i < varWord.length; i++) {
-        const char = varWord[i].toLowerCase();
-        const possibleReplacements = replacements[char] || [];
-        
-        // Sadece birkaç değişim uygula (kombinasyonel patlamayı önlemek için)
-        const limitedReplacements = possibleReplacements.slice(0, 2);
-        
-        for (const replacement of limitedReplacements) {
-          if (Math.random() < 0.3) { // Rastgele bazı kombinasyonları ekle (hepsini değil)
-            const variation = varWord.substring(0, i) + replacement + varWord.substring(i + 1);
-            variations.add(variation);
-          }
-        }
+        variations.add(word.substring(0, i) + replacement + word.substring(i + 1));
       }
     }
     
-    // Rastgele karakter ekleme ve silme
-    if (word.length > 3) {
-      // Karakter silme: a[A]a -> aa
-      for (let i = 1; i < word.length - 1; i++) {
-        // Silme varyasyonu
-        const deletion = word.substring(0, i) + word.substring(i + 1);
-        variations.add(deletion);
-      }
-      
-      // Karakter ekleme: aa -> a[X]a
-      const commonChars = 'aeiouıöüy'; // Yaygın sesli harfler
-      for (let i = 1; i < word.length; i++) {
-        const randomChar = commonChars[Math.floor(Math.random() * commonChars.length)];
-        const insertion = word.substring(0, i) + randomChar + word.substring(i);
-        variations.add(insertion);
-      }
-    }
-  }
-  
-  /**
-   * Tekrarlanan karakterleri işler
-   * @private
-   */
-  _handleRepeatedCharacters(word, variations) {
-    // Tekrarlanan karakterleri sıkıştır (ör: aaaaa -> a)
+    // Tekrarlanan karakter işlemleri
     const compressedWord = word.replace(/(.)\1+/g, '$1');
     if (compressedWord !== word) {
       variations.add(compressedWord);
     }
     
-    // Tekrarlanan karakterleri ikili grupla (ör: aaaaa -> aa)
-    const doubleCompressed = word.replace(/(.)\1{2,}/g, '$1$1');
-    if (doubleCompressed !== word && doubleCompressed !== compressedWord) {
-      variations.add(doubleCompressed);
-    }
-    
-    // Tek karakterli tekrarlar ekle (ör: as -> aas veya ass)
-    for (let i = 0; i < word.length; i++) {
-      const doubledChar = word.substring(0, i) + word[i] + word[i] + word.substring(i + 1);
-      variations.add(doubledChar);
-    }
-  }
-  
-  /**
-   * Boşluk ve noktalama işlemleri
-   * @private
-   */
-  _handleSpacingVariations(word, variations) {
-    // Boşluk eklemeli varyasyonlar
-    for (let i = 1; i < word.length; i++) {
-      // Ortaya boşluk ekle
-      const withSpace = word.substring(0, i) + ' ' + word.substring(i);
-      variations.add(withSpace);
-      
-      // Nokta ekleme
-      const withDot = word.substring(0, i) + '.' + word.substring(i);
-      variations.add(withDot);
-    }
-    
-    // Kelimeleri birleştirme (eğer boşluk içeriyorsa)
+    // Boşluk işlemleri
     if (word.includes(' ')) {
       variations.add(word.replace(/\s+/g, ''));
     }
-  }
-  
-  /**
-   * Ters ve benzer kelime işlemleri
-   * @private
-   */
-  _handleReverseAndSimilar(word, variations) {
-    // Kelimeyi tersine çevirme (olası palindromlar için)
-    const reversed = word.split('').reverse().join('');
-    variations.add(reversed);
     
-    // Karıştırılmış harfler (sadece kısa kelimeler için)
-    if (word.length <= 6) {
-      const shuffled = this._shuffleString(word);
-      variations.add(shuffled);
-    }
-  }
-  
-  /**
-   * Kelimenin karakterlerini karıştırır
-   * @private
-   */
-  _shuffleString(str) {
-    const arr = str.split('');
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr.join('');
-  }
-  
-  /**
-   * Fonetik varyasyonlar oluşturur
-   * @private
-   */
-  _handlePhoneticVariations(word, variations) {
-    // Türkçe fonetik varyasyonlar
-    const phoneticReplacements = {
-      'ck': ['k'],
-      'ch': ['ç'],
-      'sh': ['ş'],
-      'gh': ['ğ'],
-      'ph': ['f'],
-      'qu': ['k'],
-      'x': ['ks'],
-      'w': ['v'],
-      'th': ['t'],
-      'kh': ['h'],
-      'dj': ['c'],
-      'ae': ['e'],
-      'oe': ['ö'],
-      'ee': ['i'],
-      'oo': ['u'],
-      'y': ['i']
-    };
-    
-    // Kelimenin içindeki fonetik kalıpları değiştir
-    let phonetic = word;
-    for (const [pattern, replacements] of Object.entries(phoneticReplacements)) {
-      if (phonetic.includes(pattern)) {
-        for (const repl of replacements) {
-          variations.add(phonetic.replace(new RegExp(pattern, 'g'), repl));
-        }
-      }
-    }
-    
-    // Türkçe ses benzerliği
-    const commonPairs = [
-      ['c', 'j'], ['s', 'z'], ['g', 'k'], ['d', 't'], ['b', 'p'], ['v', 'f']
-    ];
-    
-    for (const [char1, char2] of commonPairs) {
-      // char1 -> char2 değişimi
-      if (word.includes(char1)) {
-        variations.add(word.replace(new RegExp(char1, 'g'), char2));
-      }
-      
-      // char2 -> char1 değişimi
-      if (word.includes(char2)) {
-        variations.add(word.replace(new RegExp(char2, 'g'), char1));
-      }
-    }
+    return [...variations];
   }
   
   /**
