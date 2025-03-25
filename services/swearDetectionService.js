@@ -211,46 +211,266 @@ class SwearDetectionService {
   }
   
   /**
-   * Olası karakter değişimleriyle varyasyonlar oluşturur
+   * Olası karakter değişimleriyle varyasyonlar oluşturur - Gelişmiş algoritma
    * @param {string} word - Varyasyonları oluşturulacak kelime
    * @returns {Array<string>} Olası varyasyonlar
    */
   generatePossibleVariations(word) {
-    const variations = [word];
+    // Ana varyasyonlar kümesini oluştur
+    const variations = new Set([word]);
     
-    // Yaygın karakter değişimlerini tanımla
+    // Türkçe karakterleri de içeren yaygın karakter değişimleri
     const replacements = {
-      'a': ['@', '4'],
-      'e': ['3'],
-      'i': ['1', '!'],
-      'o': ['0'],
-      's': ['5', '$'],
-      'ş': ['s'],
-      'ç': ['c'],
-      'ğ': ['g'],
+      'a': ['@', '4', 'ä', 'á', 'â', 'à', 'æ'],
+      'b': ['8', '6', 'ß'],
+      'c': ['ç', 'č', '¢', '('],
+      'ç': ['c', 'ch'],
+      'd': ['t', 'ð'],
+      'e': ['3', '€', 'ë', 'é', 'ê', 'è'],
+      'g': ['ğ', '9', '6', 'q'],
+      'ğ': ['g', 'gh'],
+      'h': ['#', '4'],
+      'i': ['1', '!', 'ı', 'í', 'î', 'ï', '|', '¡', ']'],
+      'ı': ['i', '1', '!'],
+      'j': ['y'],
+      'k': ['q', 'c'],
+      'l': ['1', '|', '¦', 'ł'],
+      'm': ['nn', 'rn'],
+      'n': ['ñ'],
+      'o': ['0', 'ö', 'ø', 'ó', 'ô', 'ò', 'õ'],
+      'ö': ['o', '0'],
+      'p': ['þ'],
+      'q': ['9'],
+      'r': ['®'],
+      's': ['5', '$', 'ş', 'ß', 'z'],
+      'ş': ['s', 'sh'],
+      't': ['7', '+'],
+      'u': ['ü', 'ú', 'û', 'ù', 'µ'],
       'ü': ['u'],
-      'ö': ['o'],
-      'ı': ['i']
+      'v': ['w', '\/\/'],
+      'w': ['v', '\/\/'],
+      'x': ['×', 'ж', 'ks'],
+      'y': ['j', 'ÿ'],
+      'z': ['s', '2']
     };
     
+    // 1. Temel karakter değişimleri (tek karakter)
+    this._applyCharacterReplacements(word, replacements, variations);
+    
+    // 2. Çoklu karakter değişimleri (birden fazla karakter aynı anda)
+    this._applyMultipleReplacements(word, replacements, variations);
+    
+    // 3. Tekrarlanan karakterleri işleme (aaaaa -> a veya aa)
+    this._handleRepeatedCharacters(word, variations);
+    
+    // 4. Boşluk ve noktalama ekleme/çıkarma varyasyonları
+    this._handleSpacingVariations(word, variations);
+    
+    // 5. Tersine çevirme ve benzer kelimeler
+    this._handleReverseAndSimilar(word, variations);
+    
+    // 6. Benzer sesler ve yazımlar
+    this._handlePhoneticVariations(word, variations);
+    
+    return [...variations];
+  }
+  
+  /**
+   * Tek karakter değişimleri uygular
+   * @private
+   */
+  _applyCharacterReplacements(word, replacements, variations) {
     // Tüm olası tek karakter değişimlerini oluştur
     for (let i = 0; i < word.length; i++) {
-      const char = word[i];
+      const char = word[i].toLowerCase();
       const possibleReplacements = replacements[char] || [];
       
       for (const replacement of possibleReplacements) {
         const variation = word.substring(0, i) + replacement + word.substring(i + 1);
-        variations.push(variation);
+        variations.add(variation);
+        
+        // Büyük harf versiyonlarını da ekle
+        if (replacement.length === 1) {
+          const upperVariation = word.substring(0, i) + replacement.toUpperCase() + word.substring(i + 1);
+          variations.add(upperVariation);
+        }
+      }
+    }
+  }
+  
+  /**
+   * Çoklu karakter değişimleri uygular (kombinasyonları)
+   * @private
+   */
+  _applyMultipleReplacements(word, replacements, variations) {
+    // İlk turda oluşturulan varyasyonlar üzerinde ikinci değişim turu
+    const firstLevelVariations = [...variations];
+    
+    // Her bir ilk seviye varyasyon için ek değişim uygula (daha karmaşık kombinasyonlar)
+    for (const varWord of firstLevelVariations) {
+      if (varWord === word) continue; // Orijinal kelimeyi atla
+      
+      for (let i = 0; i < varWord.length; i++) {
+        const char = varWord[i].toLowerCase();
+        const possibleReplacements = replacements[char] || [];
+        
+        // Sadece birkaç değişim uygula (kombinasyonel patlamayı önlemek için)
+        const limitedReplacements = possibleReplacements.slice(0, 2);
+        
+        for (const replacement of limitedReplacements) {
+          if (Math.random() < 0.3) { // Rastgele bazı kombinasyonları ekle (hepsini değil)
+            const variation = varWord.substring(0, i) + replacement + varWord.substring(i + 1);
+            variations.add(variation);
+          }
+        }
       }
     }
     
+    // Rastgele karakter ekleme ve silme
+    if (word.length > 3) {
+      // Karakter silme: a[A]a -> aa
+      for (let i = 1; i < word.length - 1; i++) {
+        // Silme varyasyonu
+        const deletion = word.substring(0, i) + word.substring(i + 1);
+        variations.add(deletion);
+      }
+      
+      // Karakter ekleme: aa -> a[X]a
+      const commonChars = 'aeiouıöüy'; // Yaygın sesli harfler
+      for (let i = 1; i < word.length; i++) {
+        const randomChar = commonChars[Math.floor(Math.random() * commonChars.length)];
+        const insertion = word.substring(0, i) + randomChar + word.substring(i);
+        variations.add(insertion);
+      }
+    }
+  }
+  
+  /**
+   * Tekrarlanan karakterleri işler
+   * @private
+   */
+  _handleRepeatedCharacters(word, variations) {
     // Tekrarlanan karakterleri sıkıştır (ör: aaaaa -> a)
     const compressedWord = word.replace(/(.)\1+/g, '$1');
     if (compressedWord !== word) {
-      variations.push(compressedWord);
+      variations.add(compressedWord);
     }
     
-    return variations;
+    // Tekrarlanan karakterleri ikili grupla (ör: aaaaa -> aa)
+    const doubleCompressed = word.replace(/(.)\1{2,}/g, '$1$1');
+    if (doubleCompressed !== word && doubleCompressed !== compressedWord) {
+      variations.add(doubleCompressed);
+    }
+    
+    // Tek karakterli tekrarlar ekle (ör: as -> aas veya ass)
+    for (let i = 0; i < word.length; i++) {
+      const doubledChar = word.substring(0, i) + word[i] + word[i] + word.substring(i + 1);
+      variations.add(doubledChar);
+    }
+  }
+  
+  /**
+   * Boşluk ve noktalama işlemleri
+   * @private
+   */
+  _handleSpacingVariations(word, variations) {
+    // Boşluk eklemeli varyasyonlar
+    for (let i = 1; i < word.length; i++) {
+      // Ortaya boşluk ekle
+      const withSpace = word.substring(0, i) + ' ' + word.substring(i);
+      variations.add(withSpace);
+      
+      // Nokta ekleme
+      const withDot = word.substring(0, i) + '.' + word.substring(i);
+      variations.add(withDot);
+    }
+    
+    // Kelimeleri birleştirme (eğer boşluk içeriyorsa)
+    if (word.includes(' ')) {
+      variations.add(word.replace(/\s+/g, ''));
+    }
+  }
+  
+  /**
+   * Ters ve benzer kelime işlemleri
+   * @private
+   */
+  _handleReverseAndSimilar(word, variations) {
+    // Kelimeyi tersine çevirme (olası palindromlar için)
+    const reversed = word.split('').reverse().join('');
+    variations.add(reversed);
+    
+    // Karıştırılmış harfler (sadece kısa kelimeler için)
+    if (word.length <= 6) {
+      const shuffled = this._shuffleString(word);
+      variations.add(shuffled);
+    }
+  }
+  
+  /**
+   * Kelimenin karakterlerini karıştırır
+   * @private
+   */
+  _shuffleString(str) {
+    const arr = str.split('');
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr.join('');
+  }
+  
+  /**
+   * Fonetik varyasyonlar oluşturur
+   * @private
+   */
+  _handlePhoneticVariations(word, variations) {
+    // Türkçe fonetik varyasyonlar
+    const phoneticReplacements = {
+      'ck': ['k'],
+      'ch': ['ç'],
+      'sh': ['ş'],
+      'gh': ['ğ'],
+      'ph': ['f'],
+      'qu': ['k'],
+      'x': ['ks'],
+      'w': ['v'],
+      'th': ['t'],
+      'kh': ['h'],
+      'dj': ['c'],
+      'ae': ['e'],
+      'oe': ['ö'],
+      'ee': ['i'],
+      'oo': ['u'],
+      'y': ['i']
+    };
+    
+    // Kelimenin içindeki fonetik kalıpları değiştir
+    let phonetic = word;
+    for (const [pattern, replacements] of Object.entries(phoneticReplacements)) {
+      if (phonetic.includes(pattern)) {
+        for (const repl of replacements) {
+          variations.add(phonetic.replace(new RegExp(pattern, 'g'), repl));
+        }
+      }
+    }
+    
+    // Türkçe ses benzerliği
+    const commonPairs = [
+      ['c', 'j'], ['s', 'z'], ['g', 'k'], ['d', 't'], ['b', 'p'], ['v', 'f']
+    ];
+    
+    for (const [char1, char2] of commonPairs) {
+      // char1 -> char2 değişimi
+      if (word.includes(char1)) {
+        variations.add(word.replace(new RegExp(char1, 'g'), char2));
+      }
+      
+      // char2 -> char1 değişimi
+      if (word.includes(char2)) {
+        variations.add(word.replace(new RegExp(char2, 'g'), char1));
+      }
+    }
   }
   
   /**
